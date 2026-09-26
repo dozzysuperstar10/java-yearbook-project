@@ -1,0 +1,17 @@
+services:
+
+  portfolio:
+    build:
+      context: ./myportfolio
+    container_name: portfolio
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+  java-app:
+    build:
+      context: ./java
+    container_name: java-app
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
