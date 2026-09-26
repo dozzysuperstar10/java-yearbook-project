@@ -81,11 +81,11 @@ The portfolio application is a web application served using Nginx.
 
 Port:
 
-8082
+8081
 
 Access:
 
-http://EC2-PUBLIC-IP:8082
+http://EC2-PUBLIC-IP:8081
 
 Java Application
 
