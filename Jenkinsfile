@@ -1,89 +1,206 @@
 pipeline {
-
     agent any
 
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
     environment {
- -   AWS_DEFAULT_REGION = 'eu-west-2'
+        EC2_HOST = '13.42.12.138'
+        EC2_USER = 'ec2-user'
+        PROJECT_DIR = '/home/ec2-user/java-yearbook-project'
+        SSH_CREDENTIALS = 'ec2-ssh-key'
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                checkout scm
+                echo 'Checking out code from GitHub...'
+
+                git branch: 'main',
+                    url: 'https://github.com/ProfAkymbo/java-yearbook-project.git'
             }
         }
 
-        stage('Java Build') {
+        stage('Check Files') {
             steps {
+                echo 'Checking required project files...'
+
                 sh '''
+                    set -e
+
+                    test -f docker-compose.yml
+                    test -f java/pom.xml
+                    test -f java/Dockerfile
+                    test -f myportfolio/Dockerfile
+
+                    echo "All required files are present."
+                '''
+            }
+        }
+
+        stage('Build Java') {
+            steps {
+                echo 'Building Java application with Maven...'
+
+                sh '''
+                    set -e
+
                     cd java
+
                     mvn clean package
+
+                    test -s target/yearbook-lambda-1.0.0.jar
+
+                    echo "Java application built successfully."
+                    ls -lh target/yearbook-lambda-1.0.0.jar
                 '''
             }
         }
 
-        stage('Terraform Init') {
+        stage('Test EC2 SSH') {
             steps {
-                sh '''
-                    cd terraform
-                    terraform init
-                '''
-            }
-        }
+                echo 'Testing SSH connection to EC2...'
 
-        stage('Terraform Validate') {
-            steps {
-                sh '''
-                    cd terraform
-                    terraform validate
-                '''
-            }
-        }
+                sshagent(credentials: [env.SSH_CREDENTIALS]) {
+                    sh '''
+                        set -e
 
-        stage('Terraform Apply') {
-            steps {
-                sh '''
-                    cd terraform
-                    terraform apply -auto-approve
-                '''
-            }
-        }
-
-        stage('Get EC2 IP') {
-            steps {
-                script {
-                    env.EC2_IP = sh(
-                        script: '''
-                            cd terraform
-                            terraform output -raw ec2_public_ip
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    echo "EC2 IP: ${env.EC2_IP}"
+                        ssh \
+                        -o StrictHostKeyChecking=no \
+                        -o ConnectTimeout=15 \
+                        ${EC2_USER}@${EC2_HOST} \
+                        "echo SSH connection successful && hostname && whoami"
+                    '''
                 }
             }
         }
 
-        stage('Create Ansible Inventory') {
+        stage('Deploy to EC2') {
             steps {
-                sh '''
-                    cat > ansible/inventory.ini <<EOF
-[webserver]
-${EC2_IP} ansible_user=ec2-user ansible_ssh_private_key_file=${WORKSPACE}/devops-key.pem
-EOF
-                '''
+                echo 'Deploying application to EC2...'
+
+                sshagent(credentials: [env.SSH_CREDENTIALS]) {
+                    sh '''
+                        set -e
+
+                        ssh \
+                        -o StrictHostKeyChecking=no \
+                        -o ConnectTimeout=15 \
+                        ${EC2_USER}@${EC2_HOST} \
+                        "PROJECT_DIR='${PROJECT_DIR}' bash -s" <<'REMOTE'
+
+                        set -e
+
+                        echo "================================"
+                        echo "Connected to EC2"
+                        echo "================================"
+
+                        cd "\$PROJECT_DIR"
+
+                        echo "Pulling latest code from GitHub..."
+
+                        git pull --ff-only origin main
+
+                        echo "Checking Docker..."
+
+                        docker --version
+                        docker compose version
+
+                        echo "Building Java application..."
+
+                        cd java
+
+                        mvn clean package
+
+                        test -s target/yearbook-lambda-1.0.0.jar
+
+                        cd ..
+
+                        echo "Validating Docker Compose..."
+
+                        docker compose config -q
+
+                        echo "Building Docker images..."
+
+                        docker compose build --no-cache
+
+                        echo "Starting containers..."
+
+                        docker compose up -d
+
+                        echo "Checking container status..."
+
+                        docker compose ps
+
+                        echo "================================"
+                        echo "Deployment completed"
+                        echo "================================"
+
+REMOTE
+                    '''
+                }
             }
         }
 
-        stage('Ansible Deployment') {
+        stage('Verify Deployment') {
             steps {
-                sh '''
-                    ansible-playbook \
-                    -i ansible/inventory.ini \
-                    ansible/playbook.yml
-                '''
+                echo 'Checking applications on EC2...'
+
+                sshagent(credentials: [env.SSH_CREDENTIALS]) {
+                    sh '''
+                        set -e
+
+                        ssh \
+                        -o StrictHostKeyChecking=no \
+                        ${EC2_USER}@${EC2_HOST} \
+                        "PROJECT_DIR='${PROJECT_DIR}' bash -s" <<'REMOTE'
+
+                        set -e
+
+                        cd "\$PROJECT_DIR"
+
+                        echo "===== CONTAINERS ====="
+
+                        docker compose ps
+
+                        echo "===== JAVA LOGS ====="
+
+                        docker compose logs --tail=30 java-app || true
+
+                        echo "===== PORTFOLIO TEST ====="
+
+                        curl --fail \
+                        --silent \
+                        --show-error \
+                        --retry 5 \
+                        --retry-delay 3 \
+                        --retry-connrefused \
+                        http://localhost:8082/ \
+                        -o /dev/null
+
+                        echo "Portfolio is responding."
+
+                        echo "===== JAVA TEST ====="
+
+                        curl --fail \
+                        --silent \
+                        --show-error \
+                        --retry 5 \
+                        --retry-delay 3 \
+                        --retry-connrefused \
+                        http://localhost:8081/ \
+                        -o /dev/null
+
+                        echo "Java application is responding."
+
+                        echo "===== DEPLOYMENT VERIFIED ====="
+
+REMOTE
+                    '''
+                }
             }
         }
     }
@@ -91,13 +208,32 @@ EOF
     post {
 
         success {
-            echo "Deployment successful"
-            echo "Portfolio: http://${EC2_IP}"
-            echo "Java App: http://${EC2_IP}:8081"
+            echo '''
+========================================
+       DEPLOYMENT SUCCESSFUL
+========================================
+
+Portfolio:
+http://51.24.249.113:8082
+
+Java Application:
+http://51.24.249.113:8081
+'''
         }
 
         failure {
-            echo "Deployment failed"
+            echo '''
+========================================
+        DEPLOYMENT FAILED
+========================================
+
+Check the Jenkins Console Output.
+Look for the first stage that failed.
+'''
+        }
+
+        always {
+            echo 'Jenkins pipeline finished.'
         }
     }
 }
