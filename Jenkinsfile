@@ -20,7 +20,7 @@ pipeline {
                 echo 'Checking out code from GitHub...'
 
                 git branch: 'main',
-                    url: 'https://github.com/ProfAkymbo/java-yearbook-project.git'
+                    url: 'https://github.com/dozzysuperstar10?utm_source=chatgpt.com'
             }
         }
 
