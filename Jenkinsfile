@@ -7,7 +7,7 @@ pipeline {
     }
 
     environment {
-        EC2_HOST = '13.42.12.138'
+        EC2_HOST = '18.134.134.80'
         EC2_USER = 'ec2-user'
         PROJECT_DIR = '/home/ec2-user/java-yearbook-project'
         SSH_CREDENTIALS = 'ec2-ssh-key'
@@ -35,27 +35,9 @@ pipeline {
                     test -f java/pom.xml
                     test -f java/Dockerfile
                     test -f myportfolio/Dockerfile
+                    test -f myportfolio/index.html
 
                     echo "All required files are present."
-                '''
-            }
-        }
-
-        stage('Build Java') {
-            steps {
-                echo 'Building Java application with Maven...'
-
-                sh '''
-                    set -e
-
-                    cd java
-
-                    mvn clean package
-
-                    test -s target/yearbook-lambda-1.0.0.jar
-
-                    echo "Java application built successfully."
-                    ls -lh target/yearbook-lambda-1.0.0.jar
                 '''
             }
         }
@@ -92,52 +74,86 @@ pipeline {
                         ${EC2_USER}@${EC2_HOST} \
                         "PROJECT_DIR='${PROJECT_DIR}' bash -s" <<'REMOTE'
 
-                        set -e
+set -e
 
-                        echo "================================"
-                        echo "Connected to EC2"
-                        echo "================================"
+echo "========================================"
+echo "        CONNECTED TO EC2"
+echo "========================================"
 
-                        cd "\$PROJECT_DIR"
+cd "\$PROJECT_DIR"
 
-                        echo "Pulling latest code from GitHub..."
+echo "Current directory:"
+pwd
 
-                        git pull --ff-only origin main
+echo "========================================"
+echo "       PULLING LATEST CODE"
+echo "========================================"
 
-                        echo "Checking Docker..."
+git fetch origin main
+git reset --hard origin/main
 
-                        docker --version
-                        docker compose version
+echo "Latest commit:"
+git log -1 --oneline
 
-                        echo "Building Java application..."
+echo "========================================"
+echo "       CHECKING DOCKER"
+echo "========================================"
 
-                        cd java
+docker --version
+docker compose version
 
-                        mvn clean package
+echo "========================================"
+echo "       CHECKING BUILDX"
+echo "========================================"
 
-                        test -s target/yearbook-lambda-1.0.0.jar
+docker buildx version
 
-                        cd ..
+echo "========================================"
+echo "       BUILDING JAVA APPLICATION"
+echo "========================================"
 
-                        echo "Validating Docker Compose..."
+cd java
 
-                        docker compose config -q
+mvn clean package
 
-                        echo "Building Docker images..."
+echo "Checking generated JAR files:"
+ls -lh target/
 
-                        docker compose build --no-cache
+test -s target/yearbook-lambda-1.0.0.jar
 
-                        echo "Starting containers..."
+echo "Java application built successfully."
 
-                        docker compose up -d
+cd ..
 
-                        echo "Checking container status..."
+echo "========================================"
+echo "       VALIDATING COMPOSE"
+echo "========================================"
 
-                        docker compose ps
+docker compose config -q
 
-                        echo "================================"
-                        echo "Deployment completed"
-                        echo "================================"
+echo "Docker Compose configuration is valid."
+
+echo "========================================"
+echo "       BUILDING DOCKER IMAGES"
+echo "========================================"
+
+docker compose build
+
+echo "========================================"
+echo "       STARTING CONTAINERS"
+echo "========================================"
+
+docker compose up -d
+
+echo "========================================"
+echo "       CONTAINER STATUS"
+echo "========================================"
+
+docker compose ps
+
+echo "========================================"
+echo "       DEPLOYMENT FINISHED"
+echo "========================================"
 
 REMOTE
                     '''
@@ -147,7 +163,7 @@ REMOTE
 
         stage('Verify Deployment') {
             steps {
-                echo 'Checking applications on EC2...'
+                echo 'Verifying applications on EC2...'
 
                 sshagent(credentials: [env.SSH_CREDENTIALS]) {
                     sh '''
@@ -155,48 +171,61 @@ REMOTE
 
                         ssh \
                         -o StrictHostKeyChecking=no \
+                        -o ConnectTimeout=15 \
                         ${EC2_USER}@${EC2_HOST} \
                         "PROJECT_DIR='${PROJECT_DIR}' bash -s" <<'REMOTE'
 
-                        set -e
+set -e
 
-                        cd "\$PROJECT_DIR"
+cd "\$PROJECT_DIR"
 
-                        echo "===== CONTAINERS ====="
+echo "========================================"
+echo "        CONTAINER STATUS"
+echo "========================================"
 
-                        docker compose ps
+docker compose ps
 
-                        echo "===== JAVA LOGS ====="
+echo "========================================"
+echo "        JAVA CONTAINER LOGS"
+echo "========================================"
 
-                        docker compose logs --tail=30 java-app || true
+docker compose logs --tail=30 java-app || true
 
-                        echo "===== PORTFOLIO TEST ====="
+echo "========================================"
+echo "        PORTFOLIO TEST"
+echo "========================================"
 
-                        curl --fail \
-                        --silent \
-                        --show-error \
-                        --retry 5 \
-                        --retry-delay 3 \
-                        --retry-connrefused \
-                        http://localhost:8082/ \
-                        -o /dev/null
+curl \
+    --fail \
+    --silent \
+    --show-error \
+    --retry 5 \
+    --retry-delay 3 \
+    --retry-connrefused \
+    http://localhost:80/ \
+    -o /dev/null
 
-                        echo "Portfolio is responding."
+echo "Portfolio is responding on port 80."
 
-                        echo "===== JAVA TEST ====="
+echo "========================================"
+echo "        JAVA APPLICATION TEST"
+echo "========================================"
 
-                        curl --fail \
-                        --silent \
-                        --show-error \
-                        --retry 5 \
-                        --retry-delay 3 \
-                        --retry-connrefused \
-                        http://localhost:8081/ \
-                        -o /dev/null
+curl \
+    --fail \
+    --silent \
+    --show-error \
+    --retry 5 \
+    --retry-delay 3 \
+    --retry-connrefused \
+    http://localhost:8081/ \
+    -o /dev/null
 
-                        echo "Java application is responding."
+echo "Java application is responding on port 8081."
 
-                        echo "===== DEPLOYMENT VERIFIED ====="
+echo "========================================"
+echo "       DEPLOYMENT VERIFIED"
+echo "========================================"
 
 REMOTE
                     '''
@@ -214,10 +243,10 @@ REMOTE
 ========================================
 
 Portfolio:
-http://13.42.12.138:80
+http://18.134.134.80:80
 
 Java Application:
-http://13.42.12.138:8081
+http://18.134.134.80:8081
 '''
         }
 
@@ -228,7 +257,11 @@ http://13.42.12.138:8081
 ========================================
 
 Check the Jenkins Console Output.
-Look for the first stage that failed.
+
+Find the first stage marked:
+FAILED
+
+That is normally where the problem started.
 '''
         }
 
