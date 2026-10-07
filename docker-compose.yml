@@ -5,7 +5,7 @@ services:
       context: ./myportfolio
     container_name: portfolio
     ports:
-      - "8082:80"
+      - "80:80"
     restart: unless-stopped
 
   java-app:
