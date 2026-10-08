@@ -53,7 +53,7 @@ GitHub → Jenkins → AWS EC2 → Docker Compose → Applications
                       /            \
                      v              v
               Portfolio App      Java App
-                 :8082             :8081
+                 :80             :8081
 
 
 Technologies Used
@@ -241,7 +241,7 @@ Final DevOps Workflow
                        /           \
                       v             v
                 Portfolio App    Java App
-                   :8082           :8081
+                   :80           :8081
 
 Tool Responsibilities
 
