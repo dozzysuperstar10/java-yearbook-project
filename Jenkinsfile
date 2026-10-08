@@ -7,7 +7,7 @@ pipeline {
     }
 
     environment {
-        EC2_HOST = '18.134.134.80'
+        EC2_HOST = '18.175.208.124'
         EC2_USER = 'ec2-user'
         PROJECT_DIR = '/home/ec2-user/java-yearbook-project'
         SSH_CREDENTIALS = 'ec2-ssh-key'
