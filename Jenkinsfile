@@ -117,100 +117,99 @@ pipeline {
         }
 
         stage('Deploy') {
-            steps {
-                echo '========================================'
-                echo 'Deploying application to EC2'
-                echo '========================================'
+    steps {
+        echo '========================================'
+        echo 'Deploying application to EC2'
+        echo '========================================'
 
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: SSH_CREDENTIALS,
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USERNAME'
-                    )
-                ]) {
-                    sh '''
+        withCredentials([
+            sshUserPrivateKey(
+                credentialsId: SSH_CREDENTIALS,
+                keyFileVariable: 'SSH_KEY',
+                usernameVariable: 'SSH_USERNAME'
+            )
+        ]) {
+            sh '''
+                set -e
+
+                chmod 600 "$SSH_KEY"
+
+                echo "Creating project directory on EC2..."
+
+                ssh \
+                    -o StrictHostKeyChecking=no \
+                    -o ConnectTimeout=15 \
+                    -i "$SSH_KEY" \
+                    "$SSH_USERNAME@$EC2_HOST" \
+                    "mkdir -p '$PROJECT_DIR'"
+
+                echo
+                echo "Creating deployment archive..."
+
+                ARCHIVE="/tmp/java-yearbook-project-${BUILD_NUMBER}.tar.gz"
+
+                rm -f "$ARCHIVE"
+
+                tar \
+                    --exclude=.git \
+                    --exclude=java/target \
+                    --exclude=project.tar.gz \
+                    -czf "$ARCHIVE" \
+                    -C "$WORKSPACE" .
+
+                echo
+                echo "Archive created:"
+                ls -lh "$ARCHIVE"
+
+                echo
+                echo "Uploading project archive to EC2 project directory..."
+
+                scp \
+                    -o StrictHostKeyChecking=no \
+                    -o ConnectTimeout=15 \
+                    -i "$SSH_KEY" \
+                    "$ARCHIVE" \
+                    "$SSH_USERNAME@$EC2_HOST:$PROJECT_DIR/"
+
+                echo
+                echo "Extracting project on EC2..."
+
+                ssh \
+                    -o StrictHostKeyChecking=no \
+                    -o ConnectTimeout=15 \
+                    -i "$SSH_KEY" \
+                    "$SSH_USERNAME@$EC2_HOST" "
                         set -e
 
-                        chmod 600 "$SSH_KEY"
+                        cd '$PROJECT_DIR'
 
-                        echo "Creating project directory on EC2..."
-
-                        ssh \
-                            -o StrictHostKeyChecking=no \
-                            -o ConnectTimeout=15 \
-                            -i "$SSH_KEY" \
-                            "$SSH_USERNAME@$EC2_HOST" \
-                            "mkdir -p '$PROJECT_DIR'"
-
-                        echo
-                        echo "Creating deployment archive..."
-
-                        # IMPORTANT:
-                        # Archive is created outside the Jenkins workspace
-                        # so tar does not try to archive the archive itself.
-
-                        ARCHIVE="/tmp/java-yearbook-project-${BUILD_NUMBER}.tar.gz"
-
-                        rm -f "$ARCHIVE"
+                        echo 'Extracting project files...'
 
                         tar \
-                            --exclude=.git \
-                            --exclude=java/target \
-                            -czf "$ARCHIVE" \
-                            -C "$WORKSPACE" .
+                            -xzf \
+                            'java-yearbook-project-${BUILD_NUMBER}.tar.gz' \
+                            --overwrite
+
+                        rm -f \
+                            'java-yearbook-project-${BUILD_NUMBER}.tar.gz'
 
                         echo
-                        echo "Archive created:"
-                        ls -lh "$ARCHIVE"
+                        echo 'Project uploaded successfully.'
 
                         echo
-                        echo "Uploading project to EC2..."
+                        echo 'Project contents:'
 
-                        scp \
-                            -o StrictHostKeyChecking=no \
-                            -o ConnectTimeout=15 \
-                            -i "$SSH_KEY" \
-                            "$ARCHIVE" \
-                            "$SSH_USERNAME@$EC2_HOST:/tmp/"
+                        ls -la
+                    "
 
-                        echo
-                        echo "Extracting project on EC2..."
+                rm -f "$ARCHIVE"
 
-                        ssh \
-                            -o StrictHostKeyChecking=no \
-                            -o ConnectTimeout=15 \
-                            -i "$SSH_KEY" \
-                            "$SSH_USERNAME@$EC2_HOST" "
-                                set -e
-
-                                mkdir -p '$PROJECT_DIR'
-
-                                tar \
-                                    -xzf \
-                                    '/tmp/java-yearbook-project-${BUILD_NUMBER}.tar.gz' \
-                                    -C '$PROJECT_DIR'
-
-                                rm -f \
-                                    '/tmp/java-yearbook-project-${BUILD_NUMBER}.tar.gz'
-
-                                cd '$PROJECT_DIR'
-
-                                echo 'Project uploaded successfully.'
-
-                                echo
-                                echo 'Project contents:'
-                                ls -la
-                            "
-
-                        rm -f "$ARCHIVE"
-
-                        echo
-                        echo "Project files successfully deployed to EC2."
-                    '''
-                }
-            }
+                echo
+                echo "Project deployment completed successfully."
+            '''
         }
+    }
+}
 
         stage('Docker Deploy') {
             steps {
