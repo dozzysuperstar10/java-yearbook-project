@@ -27,7 +27,9 @@ pipeline {
 
         stage('Check Files') {
             steps {
-                echo 'Checking required project files...'
+                echo '========================================'
+                echo 'Checking required project files'
+                echo '========================================'
 
                 sh '''
                     set -e
@@ -35,11 +37,11 @@ pipeline {
                     echo "Project directory:"
                     pwd
 
-                    echo ""
+                    echo
                     echo "Project files:"
                     ls -la
 
-                    echo ""
+                    echo
                     echo "Checking required files..."
 
                     test -f docker-compose.yml
@@ -48,7 +50,7 @@ pipeline {
                     test -f myportfolio/Dockerfile
                     test -f myportfolio/index.html
 
-                    echo ""
+                    echo
                     echo "All required files found."
                 '''
             }
@@ -68,12 +70,12 @@ pipeline {
 
                         mvn clean package
 
-                        echo ""
+                        echo
                         echo "Checking generated JAR..."
 
                         test -s target/yearbook-lambda-1.0.0.jar
 
-                        echo ""
+                        echo
                         echo "Java build successful."
 
                         ls -lh target/yearbook-lambda-1.0.0.jar
@@ -90,27 +92,24 @@ pipeline {
 
                 withCredentials([
                     sshUserPrivateKey(
-                        credentialsId: "${SSH_CREDENTIALS}",
+                        credentialsId: SSH_CREDENTIALS,
                         keyFileVariable: 'SSH_KEY',
                         usernameVariable: 'SSH_USERNAME'
                     )
                 ]) {
-
                     sh '''
                         set -e
 
-                        echo "Testing SSH connection..."
-                        echo "EC2 Host: ${EC2_HOST}"
-                        echo "EC2 User: ${SSH_USERNAME}"
-
                         chmod 600 "$SSH_KEY"
+
+                        echo "Connecting to EC2..."
 
                         ssh \
                             -o StrictHostKeyChecking=no \
                             -o ConnectTimeout=15 \
                             -o BatchMode=yes \
                             -i "$SSH_KEY" \
-                            "${SSH_USERNAME}@${EC2_HOST}" \
+                            "$SSH_USERNAME@$EC2_HOST" \
                             "echo 'SSH connection successful'; hostname; whoami"
                     '''
                 }
@@ -125,69 +124,144 @@ pipeline {
 
                 withCredentials([
                     sshUserPrivateKey(
-                        credentialsId: "${SSH_CREDENTIALS}",
+                        credentialsId: SSH_CREDENTIALS,
                         keyFileVariable: 'SSH_KEY',
                         usernameVariable: 'SSH_USERNAME'
                     )
                 ]) {
-
                     sh '''
                         set -e
 
                         chmod 600 "$SSH_KEY"
 
-                        echo "Connecting to EC2..."
+                        echo "Creating project directory on EC2..."
 
                         ssh \
                             -o StrictHostKeyChecking=no \
                             -o ConnectTimeout=15 \
                             -i "$SSH_KEY" \
-                            "${SSH_USERNAME}@${EC2_HOST}" \
-                            "mkdir -p ${PROJECT_DIR}"
+                            "$SSH_USERNAME@$EC2_HOST" \
+                            "mkdir -p '$PROJECT_DIR'"
 
-                        echo "Uploading project files..."
+                        echo
+                        echo "Creating deployment archive..."
+
+                        # IMPORTANT:
+                        # Archive is created outside the Jenkins workspace
+                        # so tar does not try to archive the archive itself.
+
+                        ARCHIVE="/tmp/java-yearbook-project-${BUILD_NUMBER}.tar.gz"
+
+                        rm -f "$ARCHIVE"
 
                         tar \
-                            --exclude='.git' \
-                            --exclude='java/target' \
-                            -czf project.tar.gz .
+                            --exclude=.git \
+                            --exclude=java/target \
+                            -czf "$ARCHIVE" \
+                            -C "$WORKSPACE" .
+
+                        echo
+                        echo "Archive created:"
+                        ls -lh "$ARCHIVE"
+
+                        echo
+                        echo "Uploading project to EC2..."
 
                         scp \
                             -o StrictHostKeyChecking=no \
                             -o ConnectTimeout=15 \
                             -i "$SSH_KEY" \
-                            project.tar.gz \
-                            "${SSH_USERNAME}@${EC2_HOST}:${PROJECT_DIR}/project.tar.gz"
+                            "$ARCHIVE" \
+                            "$SSH_USERNAME@$EC2_HOST:/tmp/"
 
+                        echo
                         echo "Extracting project on EC2..."
 
                         ssh \
                             -o StrictHostKeyChecking=no \
+                            -o ConnectTimeout=15 \
                             -i "$SSH_KEY" \
-                            "${SSH_USERNAME}@${EC2_HOST}" \
+                            "$SSH_USERNAME@$EC2_HOST" "
+                                set -e
+
+                                mkdir -p '$PROJECT_DIR'
+
+                                tar \
+                                    -xzf \
+                                    '/tmp/java-yearbook-project-${BUILD_NUMBER}.tar.gz' \
+                                    -C '$PROJECT_DIR'
+
+                                rm -f \
+                                    '/tmp/java-yearbook-project-${BUILD_NUMBER}.tar.gz'
+
+                                cd '$PROJECT_DIR'
+
+                                echo 'Project uploaded successfully.'
+
+                                echo
+                                echo 'Project contents:'
+                                ls -la
                             "
-                                cd ${PROJECT_DIR}
 
-                                tar -xzf project.tar.gz
+                        rm -f "$ARCHIVE"
 
-                                rm -f project.tar.gz
+                        echo
+                        echo "Project files successfully deployed to EC2."
+                    '''
+                }
+            }
+        }
 
-                                echo 'Project files deployed.'
+        stage('Docker Deploy') {
+            steps {
+                echo '========================================'
+                echo 'Building and starting Docker containers'
+                echo '========================================'
 
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: SSH_CREDENTIALS,
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USERNAME'
+                    )
+                ]) {
+                    sh '''
+                        set -e
+
+                        chmod 600 "$SSH_KEY"
+
+                        ssh \
+                            -o StrictHostKeyChecking=no \
+                            -o ConnectTimeout=15 \
+                            -i "$SSH_KEY" \
+                            "$SSH_USERNAME@$EC2_HOST" "
+                                set -e
+
+                                cd '$PROJECT_DIR'
+
+                                echo 'Current directory:'
+                                pwd
+
+                                echo
                                 echo 'Stopping existing containers...'
+
                                 docker compose down || true
 
-                                echo 'Building and starting containers...'
-                                docker compose up -d --build
+                                echo
+                                echo 'Building Docker images...'
 
-                                echo 'Containers started.'
+                                docker compose build --no-cache
+
+                                echo
+                                echo 'Starting containers...'
+
+                                docker compose up -d
+
+                                echo
+                                echo 'Docker containers:'
 
                                 docker compose ps
                             "
-
-                        rm -f project.tar.gz
-
-                        echo "Deployment completed successfully."
                     '''
                 }
             }
@@ -201,12 +275,11 @@ pipeline {
 
                 withCredentials([
                     sshUserPrivateKey(
-                        credentialsId: "${SSH_CREDENTIALS}",
+                        credentialsId: SSH_CREDENTIALS,
                         keyFileVariable: 'SSH_KEY',
                         usernameVariable: 'SSH_USERNAME'
                     )
                 ]) {
-
                     sh '''
                         set -e
 
@@ -214,32 +287,38 @@ pipeline {
 
                         ssh \
                             -o StrictHostKeyChecking=no \
+                            -o ConnectTimeout=15 \
                             -i "$SSH_KEY" \
-                            "${SSH_USERNAME}@${EC2_HOST}" \
-                            "
+                            "$SSH_USERNAME@$EC2_HOST" "
+                                set -e
+
+                                cd '$PROJECT_DIR'
+
+                                echo '========================================'
+                                echo 'Project Directory'
+                                echo '========================================'
+
+                                pwd
+
+                                echo
+                                echo '========================================'
+                                echo 'Docker Compose Status'
+                                echo '========================================'
+
+                                docker compose ps
+
+                                echo
                                 echo '========================================'
                                 echo 'Docker Containers'
                                 echo '========================================'
 
-                                docker compose -f ${PROJECT_DIR}/docker-compose.yml ps
+                                docker ps
 
-                                echo ''
+                                echo
                                 echo '========================================'
-                                echo 'Java Application Test'
+                                echo 'Deployment Verification Complete'
                                 echo '========================================'
-
-                                curl -f http://localhost:8081/ || true
-
-                                echo ''
-                                echo '========================================'
-                                echo 'Portfolio Test'
-                                echo '========================================'
-
-                                curl -I -f http://localhost/ || true
                             "
-
-                        echo ""
-                        echo "Deployment verification completed."
                     '''
                 }
             }
@@ -248,24 +327,20 @@ pipeline {
 
     post {
         success {
-            echo '''
-========================================
-       DEPLOYMENT SUCCESSFUL
-========================================
-Java application and portfolio deployed.
-========================================
-'''
+            echo '========================================'
+            echo '        DEPLOYMENT SUCCESSFUL'
+            echo '========================================'
+            echo 'Java application and portfolio deployed.'
+            echo '========================================'
         }
 
         failure {
-            echo '''
-========================================
-        DEPLOYMENT FAILED
-========================================
-Check the Jenkins Console Output
-for the stage that failed.
-========================================
-'''
+            echo '========================================'
+            echo '        DEPLOYMENT FAILED'
+            echo '========================================'
+            echo 'Check the Jenkins Console Output'
+            echo 'for the stage that failed.'
+            echo '========================================'
         }
 
         always {
