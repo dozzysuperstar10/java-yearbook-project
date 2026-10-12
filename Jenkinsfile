@@ -150,12 +150,20 @@ pipeline {
 
                 rm -f "$ARCHIVE"
 
-                tar \
-                    --exclude=.git \
-                    --exclude=java/target \
-                    --exclude=project.tar.gz \
-                    -czf "$ARCHIVE" \
-                    -C "$WORKSPACE" .
+               
+tar \
+  --exclude='./.git' \
+  --exclude='./*/.git' \
+  --exclude='./terraform/.terraform' \
+  --exclude='./terraform/.terraform/*' \
+  --exclude='./terraform/terraform.tfstate' \
+  --exclude='./terraform/terraform.tfstate.backup' \
+  --exclude='./java/target' \
+  --exclude='./project.tar.gz' \
+  --exclude='./*.tar.gz' \
+  -czf "$ARCHIVE" \
+  -C "$WORKSPACE" .
+
 
                 echo
                 echo "Archive created:"
