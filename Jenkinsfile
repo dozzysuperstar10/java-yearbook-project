@@ -7,7 +7,11 @@ pipeline {
     }
 
     environment {
+<<<<<<< HEAD
         EC2_HOST = '18.130.206.149'
+=======
+        EC2_HOST = ' 18.130.206.149  '
+>>>>>>> 7975bb0 (Fix Jenkins deployment pipeline)
         EC2_USER = 'ec2-user'
         PROJECT_DIR = '/home/ec2-user/java-yearbook-project'
         SSH_CREDENTIALS = 'ec2-ssh-key'
@@ -150,6 +154,7 @@ pipeline {
 
                 rm -f "$ARCHIVE"
 
+<<<<<<< HEAD
                
 tar \
   --exclude='./.git' \
@@ -164,11 +169,23 @@ tar \
   -czf "$ARCHIVE" \
   -C "$WORKSPACE" .
 
+=======
+                tar \
+                    --exclude=.git \
+                    --exclude=java/target \
+                    --exclude=project.tar.gz \
+                    -czf "$ARCHIVE" \
+                    -C "$WORKSPACE" .
+>>>>>>> 7975bb0 (Fix Jenkins deployment pipeline)
 
                 echo
                 echo "Archive created:"
                 ls -lh "$ARCHIVE"
+<<<<<<< HEAD
                 
+=======
+
+>>>>>>> 7975bb0 (Fix Jenkins deployment pipeline)
                 echo
                 echo "Uploading project archive to EC2 project directory..."
 
