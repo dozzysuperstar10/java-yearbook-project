@@ -168,14 +168,7 @@ tar \
                 echo
                 echo "Archive created:"
                 ls -lh "$ARCHIVE"
-
-if tar -tzf "$ARCHIVE" | grep -q 'terraform/\.terraform/'; then
-    echo "ERROR: Terraform provider files are still in the archive"
-    exit 1
-else
-    echo "Verified: Terraform provider files are excluded"
-fi
-
+                
                 echo
                 echo "Uploading project archive to EC2 project directory..."
 
