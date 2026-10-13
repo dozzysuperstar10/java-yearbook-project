@@ -27,7 +27,6 @@ A Java application built with Maven and packaged as an executable JAR. The appli
 
 A static portfolio website built with HTML and CSS and served using Nginx in a Docker container. The website is exposed on port `80`.
 
-<<<<<<< HEAD
 GitHub → Jenkins → AWS EC2 → Docker Compose → Applications
 
 ---
