@@ -17,9 +17,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo '========================================'
                 echo 'Checking out code from GitHub'
-                echo '========================================'
 
                 checkout scm
             }
@@ -27,9 +25,7 @@ pipeline {
 
         stage('Check Files') {
             steps {
-                echo '========================================'
                 echo 'Checking required project files'
-                echo '========================================'
 
                 sh '''
                     set -e
@@ -58,9 +54,7 @@ pipeline {
 
         stage('Build Java') {
             steps {
-                echo '========================================'
                 echo 'Building Java application'
-                echo '========================================'
 
                 dir('java') {
                     sh '''
@@ -86,9 +80,7 @@ pipeline {
 
         stage('Test EC2 SSH') {
             steps {
-                echo '========================================'
                 echo 'Testing SSH connection to EC2'
-                echo '========================================'
 
                 withCredentials([
                     sshUserPrivateKey(
@@ -118,9 +110,7 @@ pipeline {
 
         stage('Deploy') {
     steps {
-        echo '========================================'
         echo 'Deploying application to EC2'
-        echo '========================================'
 
         withCredentials([
             sshUserPrivateKey(
@@ -226,9 +216,7 @@ tar \
 
         stage('Docker Deploy') {
             steps {
-                echo '========================================'
                 echo 'Building and starting Docker containers'
-                echo '========================================'
 
                 withCredentials([
                     sshUserPrivateKey(
@@ -281,9 +269,7 @@ tar \
 
         stage('Verify Deployment') {
             steps {
-                echo '========================================'
                 echo 'Verifying deployment'
-                echo '========================================'
 
                 withCredentials([
                     sshUserPrivateKey(
@@ -306,30 +292,22 @@ tar \
 
                                 cd '$PROJECT_DIR'
 
-                                echo '========================================'
                                 echo 'Project Directory'
-                                echo '========================================'
 
                                 pwd
 
                                 echo
-                                echo '========================================'
                                 echo 'Docker Compose Status'
-                                echo '========================================'
 
                                 docker compose ps
 
                                 echo
-                                echo '========================================'
                                 echo 'Docker Containers'
-                                echo '========================================'
 
                                 docker ps
 
                                 echo
-                                echo '========================================'
                                 echo 'Deployment Verification Complete'
-                                echo '========================================'
                             "
                     '''
                 }
@@ -339,20 +317,14 @@ tar \
 
     post {
         success {
-            echo '========================================'
             echo '        DEPLOYMENT SUCCESSFUL'
-            echo '========================================'
             echo 'Java application and portfolio deployed.'
-            echo '========================================'
         }
 
         failure {
-            echo '========================================'
             echo '        DEPLOYMENT FAILED'
-            echo '========================================'
             echo 'Check the Jenkins Console Output'
             echo 'for the stage that failed.'
-            echo '========================================'
         }
 
         always {
